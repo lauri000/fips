@@ -260,7 +260,7 @@ pub fn build_dest_unreachable(
 /// ready to be written to the TUN interface.
 pub fn build_packet_too_big(
     original_packet: &[u8],
-    mtu: u16,
+    mtu: u32,
     our_addr: Ipv6Addr,
 ) -> Option<Vec<u8>> {
     // Validate original packet
@@ -335,9 +335,8 @@ pub fn build_packet_too_big(
     // Checksum placeholder (calculated below)
     // response[icmp_start + 2..icmp_start + 4] = 0
 
-    // MTU (4 bytes, but only first 2 bytes used, last 2 are unused/zero)
-    response[icmp_start + 4..icmp_start + 6].copy_from_slice(&mtu.to_be_bytes());
-    // response[icmp_start + 6..icmp_start + 8] = 0 (unused)
+    // MTU (4 bytes, network byte order per RFC 4443 §3.2)
+    response[icmp_start + 4..icmp_start + 8].copy_from_slice(&mtu.to_be_bytes());
 
     // === ICMPv6 Body ===
     // As much of original packet as fits
@@ -558,7 +557,7 @@ mod tests {
         let original = make_ipv6_packet(src, dst, 17, &[0u8; 1200]); // Large UDP packet
 
         let our_addr: Ipv6Addr = "fd00::ffff".parse().unwrap();
-        let mtu = 1070u16;
+        let mtu = 1070u32;
         let response = build_packet_too_big(&original, mtu, our_addr);
 
         assert!(response.is_some());
@@ -580,10 +579,12 @@ mod tests {
         assert_eq!(response[IPV6_HEADER_LEN], 2); // Type = Packet Too Big
         assert_eq!(response[IPV6_HEADER_LEN + 1], 0); // Code = 0
 
-        // Check MTU value
-        let reported_mtu = u16::from_be_bytes([
+        // Check MTU value (32-bit field per RFC 4443 §3.2)
+        let reported_mtu = u32::from_be_bytes([
             response[IPV6_HEADER_LEN + 4],
             response[IPV6_HEADER_LEN + 5],
+            response[IPV6_HEADER_LEN + 6],
+            response[IPV6_HEADER_LEN + 7],
         ]);
         assert_eq!(reported_mtu, mtu);
 

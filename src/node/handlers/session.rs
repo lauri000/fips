@@ -1289,7 +1289,7 @@ impl Node {
         // Check if packet will fit after FIPS encapsulation
         let effective_mtu = self.effective_ipv6_mtu() as usize;
         if ipv6_packet.len() > effective_mtu {
-            self.send_icmpv6_packet_too_big(&ipv6_packet, effective_mtu as u16);
+            self.send_icmpv6_packet_too_big(&ipv6_packet, effective_mtu as u32);
             return;
         }
 
@@ -1310,6 +1310,18 @@ impl Node {
         // Check for established session
         if let Some(entry) = self.sessions.get(&dest_addr) {
             if entry.is_established() {
+                // Check per-destination path MTU learned from MtuExceeded signals.
+                // The first oversized packet is forwarded normally and triggers
+                // the MtuExceeded signal; subsequent packets are caught here and
+                // generate ICMPv6 Packet Too Big back to the application.
+                if let Some(mmp) = entry.mmp() {
+                    let path_mtu = mmp.path_mtu.current_mtu();
+                    let path_ipv6_mtu = crate::upper::icmp::effective_ipv6_mtu(path_mtu) as usize;
+                    if path_ipv6_mtu < effective_mtu && ipv6_packet.len() > path_ipv6_mtu {
+                        self.send_icmpv6_packet_too_big(&ipv6_packet, path_ipv6_mtu as u32);
+                        return;
+                    }
+                }
                 if let Err(e) = self.send_session_data(&dest_addr, &ipv6_packet).await {
                     debug!(dest = %self.peer_display_name(&dest_addr), error = %e, "Failed to send TUN packet via session");
                 }
@@ -1355,7 +1367,7 @@ impl Node {
     ///
     /// Rate-limited per source address to prevent ICMP floods from
     /// misconfigured applications sending repeated oversized packets.
-    pub(in crate::node) fn send_icmpv6_packet_too_big(&mut self, original_packet: &[u8], mtu: u16) {
+    pub(in crate::node) fn send_icmpv6_packet_too_big(&mut self, original_packet: &[u8], mtu: u32) {
         use crate::upper::icmp::build_packet_too_big;
         use crate::FipsAddress;
         use std::net::Ipv6Addr;

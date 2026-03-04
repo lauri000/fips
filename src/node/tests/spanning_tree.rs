@@ -16,6 +16,11 @@ pub(super) struct TestNode {
 
 /// Create a test node with a live UDP transport on localhost.
 pub(super) async fn make_test_node() -> TestNode {
+    make_test_node_with_mtu(1280).await
+}
+
+/// Create a test node with a specific transport MTU.
+pub(super) async fn make_test_node_with_mtu(mtu: u16) -> TestNode {
     use crate::config::UdpConfig;
     use crate::transport::udp::UdpTransport;
 
@@ -24,7 +29,7 @@ pub(super) async fn make_test_node() -> TestNode {
 
     let udp_config = UdpConfig {
         bind_addr: Some("127.0.0.1:0".to_string()),
-        mtu: Some(1280),
+        mtu: Some(mtu),
         ..Default::default()
     };
 
@@ -590,6 +595,44 @@ pub(super) async fn run_tree_test(
             j,
             i_addr,
             i
+        );
+    }
+
+    nodes
+}
+
+/// Like `run_tree_test` but with per-node transport MTUs.
+///
+/// `mtus` must have one entry per node. Used for heterogeneous-MTU tests
+/// where different hops have different link-layer capacities.
+pub(super) async fn run_tree_test_with_mtus(
+    mtus: &[u16],
+    edges: &[(usize, usize)],
+) -> Vec<TestNode> {
+    let mut nodes = Vec::new();
+    for &mtu in mtus {
+        nodes.push(make_test_node_with_mtu(mtu).await);
+    }
+
+    for &(i, j) in edges {
+        initiate_handshake(&mut nodes, i, j).await;
+    }
+
+    let total = drain_all_packets(&mut nodes, false).await;
+    assert!(total > 0, "Should have processed at least some packets");
+
+    for &(i, j) in edges {
+        let j_addr = *nodes[j].node.node_addr();
+        let i_addr = *nodes[i].node.node_addr();
+        assert!(
+            nodes[i].node.get_peer(&j_addr).is_some(),
+            "Node {} should have peer {} (node {})",
+            i, j_addr, j
+        );
+        assert!(
+            nodes[j].node.get_peer(&i_addr).is_some(),
+            "Node {} should have peer {} (node {})",
+            j, i_addr, i
         );
     }
 
