@@ -7,13 +7,19 @@ use app::{App, ConnectionState, SelectedTreeItem, Tab};
 use clap::Parser;
 use client::ControlClient;
 use event::{Event, EventHandler};
+use fips::version;
 use ratatui::crossterm::event::{KeyCode, KeyModifiers};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// FIPS mesh monitoring TUI
 #[derive(Parser, Debug)]
-#[command(name = "fipstop", version, about = "Monitor a running FIPS daemon")]
+#[command(
+    name = "fipstop",
+    version = version::short_version(),
+    long_version = version::long_version(),
+    about = "Monitor a running FIPS daemon"
+)]
 struct Cli {
     /// Control socket path override
     #[arg(short = 's', long)]

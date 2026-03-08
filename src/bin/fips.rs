@@ -4,6 +4,7 @@
 
 use clap::Parser;
 use fips::config::{resolve_identity, IdentitySource};
+use fips::version;
 use fips::{Config, Node};
 use std::path::PathBuf;
 use tracing::{error, info, warn, Level};
@@ -11,7 +12,12 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 /// FIPS mesh network daemon
 #[derive(Parser, Debug)]
-#[command(name = "fips", version, about)]
+#[command(
+    name = "fips",
+    version = version::short_version(),
+    long_version = version::long_version(),
+    about
+)]
 struct Args {
     /// Path to configuration file (overrides default search paths)
     #[arg(short, long, value_name = "FILE")]
@@ -32,7 +38,7 @@ async fn main() {
 
     let args = Args::parse();
 
-    info!("FIPS starting");
+    info!("FIPS {} starting", version::short_version());
 
     // Load configuration
     info!("Loading configuration");

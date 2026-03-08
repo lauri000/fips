@@ -5,6 +5,7 @@
 
 use clap::{Parser, Subcommand};
 use fips::config::{write_key_file, write_pub_file};
+use fips::version;
 use fips::{encode_nsec, Identity};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -13,7 +14,12 @@ use std::time::Duration;
 
 /// FIPS control client
 #[derive(Parser, Debug)]
-#[command(name = "fipsctl", version, about = "Query a running FIPS daemon")]
+#[command(
+    name = "fipsctl",
+    version = version::short_version(),
+    long_version = version::long_version(),
+    about = "Query a running FIPS daemon"
+)]
 struct Cli {
     /// Control socket path override
     #[arg(short = 's', long)]

@@ -40,6 +40,7 @@ pub fn show_status(node: &Node) -> Value {
     let fwd = node.stats().snapshot().forwarding;
 
     json!({
+        "version": crate::version::short_version(),
         "npub": node.npub(),
         "node_addr": hex::encode(node.node_addr().as_bytes()),
         "ipv6_addr": format!("{}", node.identity().address()),

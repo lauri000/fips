@@ -41,6 +41,7 @@ fn draw_runtime(frame: &mut Frame, data: &serde_json::Value, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    let version = helpers::str_field(data, "version");
     let pid = helpers::u64_field(data, "pid");
     let exe = helpers::str_field(data, "exe_path");
     let uptime_secs = data.get("uptime_secs").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -52,7 +53,9 @@ fn draw_runtime(frame: &mut Frame, data: &serde_json::Value, area: Rect) {
 
     let lines = vec![
         Line::from(vec![
-            Span::styled(" pid: ", label),
+            Span::styled(" ver: ", label),
+            Span::raw(version.to_string()),
+            Span::styled("  pid: ", label),
             Span::raw(pid),
             Span::styled("  uptime: ", label),
             Span::raw(uptime),

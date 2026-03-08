@@ -30,7 +30,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 }
 
 fn draw_tab_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let block = Block::default().borders(Borders::ALL).title(" fipstop ");
+    let title = format!(" fipstop {} ", fips::version::short_version());
+    let block = Block::default().borders(Borders::ALL).title(title);
     let inner = block.inner(area);
     frame.render_widget(block, area);
 

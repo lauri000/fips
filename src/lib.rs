@@ -3,6 +3,7 @@
 //! A distributed, decentralized network routing protocol for mesh nodes
 //! connecting over arbitrary transports.
 
+pub mod version;
 pub mod bloom;
 pub mod cache;
 pub mod config;
