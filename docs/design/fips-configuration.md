@@ -359,7 +359,6 @@ overhead.
 | `transports.tcp.recv_buf_size` | usize | `2097152` | Socket receive buffer size in bytes (2 MB) |
 | `transports.tcp.send_buf_size` | usize | `2097152` | Socket send buffer size in bytes (2 MB) |
 | `transports.tcp.max_inbound_connections` | usize | `256` | Maximum simultaneous inbound connections |
-| `transports.tcp.socks5_proxy` | string | *(none)* | SOCKS5 proxy for outbound connections (implementation deferred) |
 
 **Named instances.** Like other transports, multiple TCP instances can
 be configured with named sub-keys:
@@ -369,9 +368,9 @@ transports:
   tcp:
     public:
       bind_addr: "0.0.0.0:443"
-    tor:
-      socks5_proxy: "127.0.0.1:9050"
-      connect_timeout_ms: 30000
+    internal:
+      bind_addr: "10.0.0.1:8443"
+      max_inbound_connections: 64
 ```
 
 ## Peers (`peers[]`)
@@ -590,7 +589,6 @@ transports:
   #   recv_buf_size: 2097152         # 2 MB
   #   send_buf_size: 2097152         # 2 MB
   #   max_inbound_connections: 256   # resource protection limit
-  #   socks5_proxy: null             # SOCKS5 for outbound (deferred)
 
 peers:                               # static peer list
   # - npub: "npub1..."

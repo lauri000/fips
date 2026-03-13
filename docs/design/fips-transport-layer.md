@@ -69,10 +69,30 @@ forwarding and LookupResponse transit annotation.
 
 For connection-oriented transports, manage the underlying connection: TCP
 handshake, Tor circuit establishment, Bluetooth pairing. FMP cannot begin
-the Noise IK link handshake until the transport-layer connection is established.
+the Noise IK link handshake until the transport-layer connection is
+established.
 
-Connectionless transports (UDP, raw Ethernet) skip this — datagrams can flow
-immediately to any reachable address.
+Connection-oriented transports expose a non-blocking connect interface.
+`connect(addr)` initiates the connection in a background task and returns
+immediately. `connection_state(addr)` reports the current status:
+
+```text
+ConnectionState {
+    None        No connection attempt in progress
+    Connecting  Background task running
+    Connected   Ready for send()
+    Failed(msg) Error message from failed attempt
+}
+```
+
+Connectionless transports (UDP, raw Ethernet) return `Connected`
+immediately — no async work needed.
+
+At the node level, `PendingConnect` entries track links waiting for
+transport connection. `poll_pending_connects()` runs each tick, checks
+`connection_state()`, and calls `start_handshake()` on success or
+`schedule_retry()` on failure. This decouples transport-layer connection
+(which may take seconds for Tor circuits) from the FMP event loop.
 
 ### Discovery (Optional)
 
@@ -326,8 +346,7 @@ Ethernet transport started name=eth0 interface=eth0 mac=aa:bb:cc:dd:ee:ff mtu=14
 ## TCP/IP: Firewall Traversal Transport
 
 For networks where UDP is blocked but TCP port 443 is open, the TCP
-transport provides an alternative path. It also serves as the foundation
-for the future Tor transport.
+transport provides an alternative path.
 
 FIPS protocols (FMP, FSP, MMP) are all unreliable datagrams. Running them
 over TCP introduces head-of-line blocking, which adds latency jitter. MMP
@@ -338,8 +357,10 @@ penalizes TCP links (higher SRTT leads to higher link cost). ETX will be
 ### Architecture
 
 Unlike UDP (one socket serves all peers), TCP requires one `TcpStream` per
-peer. The transport maintains a connection pool (`HashMap<TransportAddr,
-TcpConnection>`) plus an optional `TcpListener` for inbound connections.
+peer. The transport maintains two pools: a `ConnectingPool` for background
+connection attempts in progress, and an established connection pool
+(`HashMap<TransportAddr, TcpConnection>`) for active connections, plus an
+optional `TcpListener` for inbound connections.
 
 | Property | Value |
 | -------- | ----- |
@@ -347,7 +368,7 @@ TcpConnection>`) plus an optional `TcpListener` for inbound connections.
 | Default MTU | 1400 bytes |
 | Per-link MTU | Derived from `TCP_MAXSEG` socket option |
 | Framing | FMP header-based (zero overhead) |
-| Connection model | Connect-on-send, optional listener |
+| Connection model | Non-blocking connect, connect-on-send fallback, optional listener |
 | Platform | Cross-platform (no `#[cfg]` gates) |
 
 ### FMP Header-Based Framing
@@ -364,29 +385,36 @@ packet boundaries:
 
 This provides zero framing overhead and built-in phase validation. The
 stream reader is implemented in a separate module (`stream.rs`) for reuse
-by the future Tor transport.
+by the Tor transport.
 
-### Connect-on-Send
+### Connection Establishment
 
-When `send(addr, data)` is called with no existing connection:
+TCP connections use a non-blocking connect model. When FMP needs to reach
+a configured peer address, the node calls `connect(addr)` on the transport,
+which spawns a background tokio task to perform the TCP handshake and socket
+configuration (TCP_NODELAY, keepalive, buffer sizes, TCP_MAXSEG query). The
+call returns immediately without blocking the event loop.
 
-1. Connect with configurable timeout (default 5s)
-2. Configure socket: `TCP_NODELAY`, keepalive, buffer sizes
-3. Read `TCP_MAXSEG` for per-connection MTU
-4. Split stream into read/write halves
-5. Spawn per-connection receive task
-6. Store connection in pool
-7. Write packet directly to stream
+The node tracks each pending connection in a `PendingConnect` entry. On
+every tick, `poll_pending_connects()` calls `connection_state(addr)` to
+check progress. When the transport reports `Connected`, the completed
+connection is promoted to the established pool (stream split into
+read/write halves, per-connection receive task spawned), and the node
+initiates the Noise IK link handshake. If the transport reports `Failed`,
+the node schedules a retry with exponential backoff.
 
-If connect fails, return error. The node's handshake retry mechanism
-handles re-attempts.
+As a fallback, `send(addr, data)` still performs synchronous
+connect-on-send if no connection exists — this handles the case where a
+send arrives before the node-level connect path runs. The non-blocking
+path is the primary mechanism for configured peers.
 
 ### Session Independence
 
 TCP connection loss does **not** tear down the FIPS peer. Noise keys, MMP
 state, and FSP sessions are bound to the peer's npub, not the TCP
-connection. The transport reconnects transparently on the next send via
-connect-on-send. MMP liveness timeout is the sole authority for peer death.
+connection. The transport reconnects transparently via the non-blocking
+connect path or connect-on-send fallback. MMP liveness timeout is the sole
+authority for peer death.
 
 ### Connection Deduplication
 
@@ -408,7 +436,6 @@ transports:
     recv_buf_size: 2097152          # SO_RCVBUF (2 MB)
     send_buf_size: 2097152          # SO_SNDBUF (2 MB)
     max_inbound_connections: 256    # Resource protection limit
-    socks5_proxy: "127.0.0.1:9050" # SOCKS5 for outbound (deferred)
 ```
 
 If `bind_addr` is configured, the transport accepts inbound connections.
@@ -496,6 +523,8 @@ link_mtu(addr)        → u16                 Per-link MTU (defaults to mtu())
 start()               → lifecycle           Bring transport up (bind socket, open device)
 stop()                → lifecycle           Bring transport down
 send(addr, data)      → delivery            Send datagram to transport address
+connect(addr)         → ()                  Initiate non-blocking connection (connection-oriented only)
+connection_state(addr)→ ConnectionState     Poll connection status (None/Connecting/Connected/Failed)
 close_connection(addr)→ ()                  Close a specific connection (no-op for connectionless)
 congestion()          → TransportCongestion  Local congestion indicators (optional)
 discover()            → Vec<DiscoveredPeer> Report discovered FIPS endpoints (optional)
@@ -579,7 +608,7 @@ transitions through `Starting` to `Up` (operational). `stop()` moves to
 | Transport | Status | Notes |
 | --------- | ------ | ----- |
 | UDP/IP | **Implemented** | Primary transport, AsyncFd/recvmsg, SO_RXQ_OVFL kernel drop detection |
-| TCP/IP | **Implemented** | FMP header-based framing, connect-on-send, per-connection MSS MTU |
+| TCP/IP | **Implemented** | FMP header-based framing, non-blocking connect, per-connection MSS MTU |
 | Ethernet | **Implemented** | AF_PACKET SOCK_DGRAM, EtherType 0x2121, beacon discovery, Linux only |
 | WiFi | Future direction | Infrastructure mode = Ethernet driver |
 | Tor | Future direction | High latency, .onion addressing |
