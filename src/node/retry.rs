@@ -59,11 +59,10 @@ impl Node {
         &mut self,
         node_addr: NodeAddr,
         now_ms: u64,
-        reconnect: bool,
     ) {
         let retry_cfg = &self.config.node.retry;
         let max_retries = retry_cfg.max_retries;
-        if max_retries == 0 && !reconnect {
+        if max_retries == 0 {
             return;
         }
 
@@ -112,12 +111,11 @@ impl Node {
             if let Some(pc) = peer_config {
                 let mut state = RetryState::new(pc);
                 state.retry_count = 1;
-                state.reconnect = reconnect;
+                state.reconnect = true;
                 let delay = state.backoff_ms(base_interval_ms, max_backoff_ms);
                 state.retry_after_ms = now_ms + delay;
                 debug!(
                     peer = %self.peer_display_name(&node_addr),
-                    reconnect = reconnect,
                     delay_secs = delay / 1000,
                     "First connection attempt failed, scheduling retry"
                 );
@@ -237,7 +235,7 @@ impl Node {
                     );
                     // Immediate failure counts as an attempt — schedule next retry
                     // (reconnect flag is preserved on existing retry_pending entry)
-                    self.schedule_retry(node_addr, now_ms, false);
+                    self.schedule_retry(node_addr, now_ms);
                 }
             }
         }
