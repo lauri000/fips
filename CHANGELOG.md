@@ -9,45 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- DNS hostname support in peer addresses for UDP and TCP transports — addresses
-  can now use `host:port` with either IP addresses or DNS hostnames (e.g.,
-  `"peer1.example.com:2121"`). DNS resolution with 60-second cache for UDP,
-  one-shot resolution at connect time for TCP.
-- Tor transport with three operating modes:
-  - `socks5` mode: outbound connections to .onion, clearnet IP, and
-    clearnet hostname addresses via SOCKS5 proxy with per-destination
-    circuit isolation (IsolateSOCKSAuth)
-  - `directory` mode: inbound via Tor-managed `HiddenServiceDir` onion
-    service, enables Tor Sandbox 1 (seccomp-bpf)
-  - `control_port` mode: Tor daemon monitoring via async control port client
-    with cookie and password authentication
-  - Optional control port monitoring in directory mode when `control_addr`
-    is configured
-  - Docker integration tests for SOCKS5 outbound and directory-mode inbound
-- Tor operator visibility:
-  - Background monitoring task polling Tor daemon status every 10s
-  - `show_transports` query exposes `tor_mode`, `onion_address`, and
-    `tor_monitoring` (bootstrap, circuits, liveness, traffic, version)
-  - fipstop Tor transport detail view with daemon status, connection stats,
-    and truncated onion address in table view
-  - Bootstrap milestone logging (25/50/75/100%), stall warning, network
-    liveness transitions, dormant mode alerts
-- Non-blocking transport connect for connection-oriented transports (TCP,
-  Tor) — connection establishment no longer stalls the RX event loop
+#### IPv6 Adapter
+
 - Pre-seed identity cache from configured peer npubs at startup, so TUN
   packets can be dispatched immediately without waiting for handshake
-  completion
+  completion ([@v0l](https://github.com/v0l))
+
+#### Mesh Peer Transports
+
+- Tor transport with SOCKS5 outbound, directory-mode onion service
+  inbound, and optional control port monitoring
+- DNS hostname support in peer addresses for UDP and TCP transports
+- Non-blocking transport connect for connection-oriented transports
+  (TCP, Tor)
 
 ### Fixed
 
 - DNS responder returned NXDOMAIN for A queries on valid `.fips` names,
   causing resolvers to give up without trying AAAA. Now returns NOERROR
-  with empty answers for non-AAAA queries on resolvable names. (#9)
+  with empty answers for non-AAAA queries on resolvable names.
+  (#9, reported by [@alopatindev](https://github.com/alopatindev))
 - Stale end-to-end session left in session table after peer removal blocked
   session re-establishment on reconnect — `remove_active_peer` now cleans
-  up `self.sessions` and `self.pending_tun_packets`. (#5)
+  up `self.sessions` and `self.pending_tun_packets`.
+  (#5, [@v0l](https://github.com/v0l))
 - `schedule_reconnect` reset exponential backoff to zero on each link-dead
-  cycle instead of preserving accumulated retry count. (#5)
+  cycle instead of preserving accumulated retry count.
+  (#5, [@v0l](https://github.com/v0l))
 - FMP/FSP rekey dual-initiation race on high-latency links (Tor): both
   sides' timers fired simultaneously, both msg1s crossed in flight, each
   side's responder path destroyed the initiator state. Fixed with
