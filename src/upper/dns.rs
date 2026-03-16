@@ -126,7 +126,15 @@ pub fn handle_dns_packet(
         return Some((bytes, Some(identity)));
     }
 
-    // Query we can't answer: NXDOMAIN
+    // Non-AAAA query (e.g. A) for a resolvable .fips name: return NOERROR
+    // with empty answers.  NXDOMAIN would tell the client the name doesn't
+    // exist, causing resolvers like nslookup to give up without trying AAAA.
+    if !is_aaaa && resolve_fips_query_with_hosts(&qname, hosts).is_some() {
+        let bytes = response.build_bytes_vec_compressed().ok()?;
+        return Some((bytes, None));
+    }
+
+    // Unresolvable name: NXDOMAIN
     *response.rcode_mut() = RCODE::NameError;
     let bytes = response.build_bytes_vec_compressed().ok()?;
     Some((bytes, None))
@@ -392,8 +400,11 @@ mod tests {
         let (response_bytes, identity_opt) = result.unwrap();
         assert!(identity_opt.is_none(), "A query should not resolve .fips");
 
+        // Valid .fips name but unsupported record type: NOERROR with empty
+        // answers (not NXDOMAIN, which would stop resolvers from trying AAAA)
         let response = Packet::parse(&response_bytes).unwrap();
-        assert_eq!(response.rcode(), RCODE::NameError);
+        assert_eq!(response.rcode(), RCODE::NoError);
+        assert!(response.answers.is_empty());
     }
 
     #[tokio::test]
