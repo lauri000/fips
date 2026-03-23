@@ -242,7 +242,7 @@ impl Node {
         };
         let jitter_ms = mmp.receiver.jitter_us() as f64 / 1000.0;
 
-        info!(
+        debug!(
             peer = %peer_name,
             rtt = %rtt_str,
             loss = %loss_str,
@@ -265,7 +265,7 @@ impl Node {
         };
         let loss_str = format!("{:.1}%", m.loss_rate() * 100.0);
 
-        info!(
+        debug!(
             peer = %peer_name,
             rtt = %rtt_str,
             loss = %loss_str,
@@ -434,7 +434,7 @@ impl Node {
         };
         let jitter_ms = mmp.receiver.jitter_us() as f64 / 1000.0;
 
-        info!(
+        debug!(
             session = %session_name,
             rtt = %rtt_str,
             loss = %loss_str,
@@ -458,7 +458,7 @@ impl Node {
         };
         let loss_str = format!("{:.1}%", m.loss_rate() * 100.0);
 
-        info!(
+        debug!(
             session = %session_name,
             rtt = %rtt_str,
             loss = %loss_str,

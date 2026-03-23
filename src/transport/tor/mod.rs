@@ -716,7 +716,7 @@ impl TorTransport {
         let proxy_addr = self.config.socks5_addr();
         let timeout_ms = self.config.connect_timeout_ms();
 
-        info!(
+        debug!(
             transport_id = %self.transport_id,
             remote_addr = %addr,
             proxy = %proxy_addr,
@@ -1154,7 +1154,7 @@ async fn tor_receive_loop(
                 let packet = ReceivedPacket::new(transport_id, remote_addr.clone(), data);
 
                 if packet_tx.send(packet).await.is_err() {
-                    info!(
+                    debug!(
                         transport_id = %transport_id,
                         "Packet channel closed, stopping Tor receive loop"
                     );

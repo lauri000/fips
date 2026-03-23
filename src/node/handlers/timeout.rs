@@ -33,13 +33,13 @@ impl Node {
                 let direction = conn.direction();
                 let idle_ms = conn.idle_time(now_ms);
                 if conn.is_failed() {
-                    info!(
+                    debug!(
                         link_id = %link_id,
                         direction = %direction,
                         "Failed handshake connection cleaned up"
                     );
                 } else {
-                    info!(
+                    debug!(
                         link_id = %link_id,
                         direction = %direction,
                         idle_secs = idle_ms / 1000,

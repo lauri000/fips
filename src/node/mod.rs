@@ -990,7 +990,7 @@ impl Node {
             ),
         };
         if should_log {
-            tracing::info!(
+            tracing::debug!(
                 estimated_mesh_size = size,
                 peers = self.peers.len(),
                 children = child_count,

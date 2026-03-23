@@ -410,7 +410,7 @@ impl Node {
 
         let peer_count = peer_addrs.len();
 
-        info!(
+        debug!(
             request_id = request.request_id,
             target = %self.peer_display_name(target),
             ttl = ttl,

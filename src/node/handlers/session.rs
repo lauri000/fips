@@ -1169,7 +1169,7 @@ impl Node {
         entry.set_handshake_payload(setup_payload, now_ms + resend_interval);
         self.sessions.insert(dest_addr, entry);
 
-        info!(dest = %self.peer_display_name(&dest_addr), "Session initiation started");
+        debug!(dest = %self.peer_display_name(&dest_addr), "Session initiation started");
         Ok(())
     }
 

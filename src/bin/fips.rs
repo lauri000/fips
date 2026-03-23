@@ -7,7 +7,7 @@ use fips::config::{resolve_identity, IdentitySource};
 use fips::version;
 use fips::{Config, Node};
 use std::path::PathBuf;
-use tracing::{error, info, warn, Level};
+use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber::{fmt, EnvFilter};
 
 /// FIPS mesh network daemon
@@ -41,7 +41,7 @@ async fn main() {
     info!("FIPS {} starting", version::short_version());
 
     // Load configuration
-    info!("Loading configuration");
+    debug!("Loading configuration");
     let (config, loaded_paths) = if let Some(config_path) = &args.config {
         // Explicit config file specified - load only that file
         match Config::load_file(config_path) {
@@ -88,7 +88,7 @@ async fn main() {
     // Create node with resolved identity
     let mut config = config;
     config.node.identity.nsec = Some(resolved.nsec);
-    info!("Creating node");
+    debug!("Creating node");
     let mut node = match Node::new(config) {
         Ok(node) => node,
         Err(e) => {

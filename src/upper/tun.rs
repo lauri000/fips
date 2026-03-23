@@ -13,7 +13,7 @@ use std::net::Ipv6Addr;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::sync::mpsc;
 use thiserror::Error;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, trace};
 use tun::Layer;
 
 /// Channel sender for packets to be written to TUN.
@@ -96,7 +96,7 @@ impl TunDevice {
 
         // Delete existing interface if present (TUN devices are exclusive)
         if interface_exists(name).await {
-            info!(name, "Deleting existing TUN interface");
+            debug!(name, "Deleting existing TUN interface");
             if let Err(e) = delete_interface(name).await {
                 debug!(name, error = %e, "Failed to delete existing interface");
             }
@@ -158,7 +158,7 @@ impl TunDevice {
     ///
     /// This deletes the interface entirely.
     pub async fn shutdown(&self) -> Result<(), TunError> {
-        info!(name = %self.name, "Deleting TUN device");
+        debug!(name = %self.name, "Deleting TUN device");
         delete_interface(&self.name).await
     }
 
@@ -387,9 +387,9 @@ pub fn log_ipv6_packet(packet: &[u8]) {
 /// to return an error. Use this for graceful shutdown when the TUN device
 /// has been moved to another thread.
 pub async fn shutdown_tun_interface(name: &str) -> Result<(), TunError> {
-    info!("Shutting down TUN interface {}", name);
+    debug!("Shutting down TUN interface {}", name);
     delete_interface(name).await?;
-    info!("TUN interface {} stopped", name);
+    debug!("TUN interface {} stopped", name);
     Ok(())
 }
 

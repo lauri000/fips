@@ -893,7 +893,7 @@ async fn tcp_receive_loop(
                 );
 
                 if packet_tx.send(packet).await.is_err() {
-                    info!(
+                    debug!(
                         transport_id = %transport_id,
                         "Packet channel closed, stopping TCP receive loop"
                     );

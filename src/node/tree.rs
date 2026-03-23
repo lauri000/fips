@@ -198,7 +198,7 @@ impl Node {
 
         self.stats_mut().tree.accepted += 1;
 
-        info!(
+        debug!(
             from = %self.peer_display_name(from),
             seq = announce.declaration.sequence(),
             depth = announce.ancestry.depth(),

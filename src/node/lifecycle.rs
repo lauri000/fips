@@ -50,7 +50,7 @@ impl Node {
             return;
         }
 
-        info!(count = peer_configs.len(), "Initiating static peer connections");
+        debug!(count = peer_configs.len(), "Initiating static peer connections");
 
         for peer_config in peer_configs {
             if let Err(e) = self.initiate_peer_connection(&peer_config).await {
@@ -561,7 +561,7 @@ impl Node {
                     let max_mss = effective_mtu.saturating_sub(40).saturating_sub(20); // IPv6 + TCP headers
                     
                     info!("effective MTU: {} bytes", effective_mtu);
-                    info!("   max TCP MSS: {} bytes", max_mss);
+                    debug!("   max TCP MSS: {} bytes", max_mss);
 
                     // Create writer (dups the fd for independent write access)
                     let (writer, tun_tx) = device.create_writer(max_mss)?;

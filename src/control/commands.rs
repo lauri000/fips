@@ -6,7 +6,7 @@
 use super::protocol::Response;
 use crate::node::Node;
 use serde_json::Value;
-use tracing::info;
+use tracing::debug;
 
 /// Dispatch a mutating command to the appropriate handler.
 pub async fn dispatch(node: &mut Node, command: &str, params: Option<&Value>) -> Response {
@@ -38,7 +38,7 @@ async fn connect(node: &mut Node, params: Option<&Value>) -> Response {
         None => return Response::error("missing 'transport' parameter"),
     };
 
-    info!(npub = %npub, address = %address, transport = %transport, "API connect requested");
+    debug!(npub = %npub, address = %address, transport = %transport, "API connect requested");
 
     match node.api_connect(npub, address, transport).await {
         Ok(data) => Response::ok(data),
@@ -59,7 +59,7 @@ fn disconnect(node: &mut Node, params: Option<&Value>) -> Response {
         None => return Response::error("missing 'npub' parameter"),
     };
 
-    info!(npub = %npub, "API disconnect requested");
+    debug!(npub = %npub, "API disconnect requested");
 
     match node.api_disconnect(npub) {
         Ok(data) => Response::ok(data),

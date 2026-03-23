@@ -420,7 +420,7 @@ impl Node {
                         if let Some(peer) = self.peers.get_mut(&node_addr) {
                             peer.set_handshake_msg2(wire_msg2.clone());
                         }
-                        info!(
+                        debug!(
                             peer = %self.peer_display_name(&node_addr),
                             link_id = %link_id,
                             our_index = %our_index,
@@ -449,7 +449,7 @@ impl Node {
                         }
                         // Clean up the losing connection's link
                         self.remove_link(&loser_link_id);
-                        info!(
+                        debug!(
                             peer = %self.peer_display_name(&node_addr),
                             loser_link_id = %loser_link_id,
                             "Inbound cross-connection won, loser link cleaned up"
@@ -474,7 +474,7 @@ impl Node {
                             (packet.transport_id, packet.remote_addr.clone()),
                             winner_link_id,
                         );
-                        info!(
+                        debug!(
                             winner_link_id = %winner_link_id,
                             "Inbound cross-connection lost, keeping existing"
                         );
@@ -640,7 +640,7 @@ impl Node {
 
         let peer_node_addr = *peer_identity.node_addr();
 
-        info!(
+        debug!(
             peer = %self.peer_display_name(&peer_node_addr),
             link_id = %link_id,
             their_index = %header.sender_idx,
@@ -716,7 +716,7 @@ impl Node {
                         );
                     }
 
-                    info!(
+                    debug!(
                         peer = %self.peer_display_name(&peer_node_addr),
                         new_our_index = %outbound_our_index,
                         new_their_index = %header.sender_idx,
@@ -736,7 +736,7 @@ impl Node {
                 let outbound_our_index = conn.our_index();
 
                 if let Some(peer) = self.peers.get(&peer_node_addr) {
-                    info!(
+                    debug!(
                         peer = %self.peer_display_name(&peer_node_addr),
                         kept_their_index = ?peer.their_index(),
                         "Cross-connection: keeping inbound session and original their_index (peer outbound wins)"
@@ -807,7 +807,7 @@ impl Node {
                             (packet.transport_id, packet.remote_addr.clone()),
                             link_id,
                         );
-                        info!(
+                        debug!(
                             peer = %self.peer_display_name(&node_addr),
                             loser_link_id = %loser_link_id,
                             "Outbound cross-connection won, loser link cleaned up"
@@ -832,7 +832,7 @@ impl Node {
                             (packet.transport_id, packet.remote_addr.clone()),
                             winner_link_id,
                         );
-                        info!(
+                        debug!(
                             winner_link_id = %winner_link_id,
                             "Outbound cross-connection lost, keeping existing"
                         );
@@ -950,7 +950,7 @@ impl Node {
                 self.retry_pending.remove(&peer_node_addr);
                 self.register_identity(peer_node_addr, verified_identity.pubkey_full());
 
-                info!(
+                debug!(
                     peer = %self.peer_display_name(&peer_node_addr),
                     winner_link = %link_id,
                     loser_link = %loser_link_id,
@@ -966,7 +966,7 @@ impl Node {
                 // Free the index we allocated
                 let _ = self.index_allocator.free(our_index);
 
-                info!(
+                debug!(
                     peer = %self.peer_display_name(&peer_node_addr),
                     winner_link = %existing_link_id,
                     loser_link = %link_id,

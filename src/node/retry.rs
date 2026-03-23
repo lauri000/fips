@@ -171,7 +171,7 @@ impl Node {
             state.retry_count += 1;
             let delay = state.backoff_ms(base_interval_ms, max_backoff_ms);
             state.retry_after_ms = now_ms + delay;
-            info!(
+            debug!(
                 peer = %peer_name,
                 retry = state.retry_count,
                 delay_secs = delay / 1000,
@@ -185,7 +185,7 @@ impl Node {
         let delay = state.backoff_ms(base_interval_ms, max_backoff_ms);
         state.retry_after_ms = now_ms + delay;
 
-        info!(
+        debug!(
             peer = %peer_name,
             delay_secs = delay / 1000,
             "Scheduling auto-reconnect after link-dead removal"

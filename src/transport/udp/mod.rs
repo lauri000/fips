@@ -337,7 +337,7 @@ async fn udp_receive_loop(
 
                 if packet_tx.send(packet).await.is_err() {
                     // Receiver dropped, exit loop
-                    info!(
+                    debug!(
                         transport_id = %transport_id,
                         "Packet channel closed, stopping receive loop"
                     );

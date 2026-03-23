@@ -421,7 +421,7 @@ async fn ethernet_receive_loop(
                         );
 
                         if packet_tx.send(packet).await.is_err() {
-                            info!(
+                            debug!(
                                 transport_id = %transport_id,
                                 "Packet channel closed, stopping receive loop"
                             );
