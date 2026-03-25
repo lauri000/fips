@@ -503,20 +503,20 @@ using the `bluer` crate.
 | `transports.ble.scan` | bool | `true` | Listen for BLE beacon advertisements from other nodes |
 | `transports.ble.auto_connect` | bool | `false` | Automatically connect to discovered peers |
 | `transports.ble.accept_connections` | bool | `true` | Accept incoming L2CAP connections |
-| `transports.ble.scan_interval_secs` | u64 | `10` | Interval between BLE scan cycles |
-| `transports.ble.beacon_interval_secs` | u64 | `10` | Interval between beacon advertising bursts |
-| `transports.ble.beacon_duration_secs` | u64 | `3` | Duration of each beacon advertising burst |
+| `transports.ble.probe_cooldown_secs` | u64 | `30` | Cooldown before re-probing the same BLE address |
 
 **Address format.** BLE peer addresses use the form
 `"adapter/device_address"` — for example, `"hci0/AA:BB:CC:DD:EE:FF"`.
 
-**Scan/probe and tie-breaking.** When `scan` is enabled, the transport
-periodically scans for BLE beacons from other FIPS nodes. Discovered
-peers are probed with per-entry random jitter to prevent herd effects
-when multiple nodes see the same beacon simultaneously. If two nodes
-probe each other at the same time (cross-probe), a deterministic
-tie-breaker based on NodeAddr comparison ensures only one connection
-is established.
+**Advertising and scanning.** When `advertise` is enabled, the transport
+advertises the FIPS service UUID continuously so that nearby nodes can
+discover and connect via L2CAP. When `scan` is enabled, the transport
+continuously scans for other FIPS nodes' advertisements. Discovered
+peers are probed immediately (L2CAP connect + pubkey exchange) with a
+cooldown (`probe_cooldown_secs`) to prevent rapid re-probing of the same
+address. If two nodes probe each other at the same time (cross-probe),
+a deterministic tie-breaker based on NodeAddr comparison ensures only
+one connection is established.
 
 **Connection pool.** The `max_connections` parameter limits the number of
 concurrent BLE connections. When the pool is full, the least-recently-used
@@ -802,9 +802,7 @@ transports:
   #   scan: true                      # listen for BLE beacons
   #   auto_connect: false             # connect to discovered peers
   #   accept_connections: true         # accept incoming L2CAP connections
-  #   scan_interval_secs: 10          # interval between scan cycles
-  #   beacon_interval_secs: 10        # interval between beacon bursts
-  #   beacon_duration_secs: 3         # duration of each beacon burst
+  #   probe_cooldown_secs: 30         # cooldown before re-probing same address
 
 peers:                               # static peer list
   # - npub: "npub1..."

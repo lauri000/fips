@@ -36,8 +36,7 @@ use io::{BleIo, BleScanner, BleStream};
 use pool::{BleConnection, ConnectionPool};
 use stats::BleStats;
 
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -90,8 +89,6 @@ pub struct BleTransport<I: BleIo> {
     accept_task: Option<JoinHandle<()>>,
     /// Combined scan + probe loop task handle.
     scan_probe_task: Option<JoinHandle<()>>,
-    /// Advertising task handle.
-    advertise_task: Option<JoinHandle<()>>,
     /// Discovery buffer for discovered peers.
     discovery_buffer: Arc<DiscoveryBuffer>,
     /// Transport statistics.
@@ -131,7 +128,6 @@ impl<I: BleIo> BleTransport<I> {
             packet_tx,
             accept_task: None,
             scan_probe_task: None,
-            advertise_task: None,
             discovery_buffer: Arc::new(DiscoveryBuffer::new(transport_id)),
             stats: Arc::new(BleStats::new()),
             local_pubkey: None,
@@ -210,24 +206,14 @@ impl<I: BleIo> BleTransport<I> {
             }
         }
 
-        // Start periodic beacon (advertise in bursts)
+        // Start continuous advertising
         if self.config.advertise() {
-            let io = Arc::clone(&self.io);
-            let beacon_interval = self.config.beacon_interval_secs();
-            let beacon_duration = self.config.beacon_duration_secs();
-            let stats = Arc::clone(&self.stats);
-            self.advertise_task = Some(tokio::spawn(beacon_loop(
-                io,
-                beacon_interval,
-                beacon_duration,
-                stats,
-            )));
-            debug!(
-                adapter = %adapter,
-                interval_secs = beacon_interval,
-                duration_secs = beacon_duration,
-                "BLE beacon loop started"
-            );
+            if let Err(e) = self.io.start_advertising().await {
+                warn!(adapter = %adapter, error = %e, "failed to start BLE advertising");
+            } else {
+                self.stats.record_advertisement();
+                debug!(adapter = %adapter, "BLE advertising started (continuous)");
+            }
         }
 
         // Start combined scan + probe loop
@@ -243,6 +229,7 @@ impl<I: BleIo> BleTransport<I> {
                         self.local_pubkey,
                         self.config.psm(),
                         self.config.connect_timeout_ms(),
+                        self.config.probe_cooldown_secs(),
                         local_node_addr,
                     )));
                     debug!(adapter = %adapter, "BLE scan+probe loop started");
@@ -270,11 +257,6 @@ impl<I: BleIo> BleTransport<I> {
 
         // Abort scan+probe loop
         if let Some(task) = self.scan_probe_task.take() {
-            task.abort();
-        }
-
-        // Abort advertising task
-        if let Some(task) = self.advertise_task.take() {
             task.abort();
         }
 
@@ -698,42 +680,9 @@ async fn pubkey_exchange<S: BleStream>(
         .map_err(|e| TransportError::RecvFailed(format!("pubkey exchange: invalid key: {}", e)))
 }
 
-/// Beacon loop: periodically advertises the FIPS service UUID.
-///
-/// Advertises immediately on startup, then repeats in bursts:
-/// advertise for `duration_secs`, stop for `interval_secs`, repeat.
-/// This reduces BLE radio usage compared to continuous advertising.
-async fn beacon_loop<I: io::BleIo>(
-    io: Arc<I>,
-    interval_secs: u64,
-    duration_secs: u64,
-    stats: Arc<BleStats>,
-) {
-    let interval = std::time::Duration::from_secs(interval_secs);
-    let duration = std::time::Duration::from_secs(duration_secs);
-
-    loop {
-        // Start advertising burst
-        if let Err(e) = io.start_advertising().await {
-            warn!(error = %e, "BLE beacon: failed to start advertising");
-            tokio::time::sleep(interval).await;
-            continue;
-        }
-        stats.record_advertisement();
-        trace!(duration_secs, "BLE beacon: advertising");
-
-        // Hold advertisement for the burst duration
-        tokio::time::sleep(duration).await;
-
-        // Stop advertising until next burst
-        if let Err(e) = io.stop_advertising().await {
-            warn!(error = %e, "BLE beacon: failed to stop advertising");
-        }
-
-        // Wait for next beacon interval
-        tokio::time::sleep(interval).await;
-    }
-}
+// Beacon loop removed — advertising is now continuous (started once
+// in start_async, stopped in stop_async). BLE advertising overhead
+// is negligible (~0.15% duty cycle on advertising channels).
 
 /// Accept loop: accepts inbound L2CAP connections, exchanges pubkeys,
 /// and adds to pool.
@@ -884,15 +833,14 @@ async fn receive_loop<S: BleStream>(
 
 /// Combined scan + probe loop.
 ///
-/// Scanner events arrive and get inserted into a delay queue with random
-/// jitter. When a delayed entry expires, it's probed (L2CAP connect +
-/// pubkey exchange) and the result goes into the DiscoveryBuffer. The
-/// node layer picks up discovered peers via `discover()` and connects
-/// through the normal auto-connect → send_async → connect_inline path.
+/// Scanner events arrive continuously (both sides advertise continuously).
+/// Each scan result is probed immediately unless the address is in cooldown
+/// (recently probed) or already connected. On successful probe, the peer
+/// is reported to the discovery buffer for the node layer to auto-connect.
 ///
-/// The delay queue ensures each beacon response gets an independent
-/// random delay, preventing herd effects when multiple nodes see the
-/// same advertisement simultaneously.
+/// Cooldown prevents rapid re-probing of the same address: after any probe
+/// attempt (success or failure), the address is suppressed for
+/// `cooldown_secs`. Connected peers are filtered by pool membership.
 #[allow(clippy::too_many_arguments)]
 async fn scan_probe_loop<I: io::BleIo>(
     mut scanner: I::Scanner,
@@ -903,129 +851,97 @@ async fn scan_probe_loop<I: io::BleIo>(
     local_pubkey: Option<[u8; 32]>,
     psm: u16,
     connect_timeout_ms: u64,
+    cooldown_secs: u64,
     local_node_addr: Option<NodeAddr>,
 ) {
-    use rand::RngExt;
-
-    // Time-sorted delay queue: (fire_time, addr). Min-heap on fire_time.
-    let mut delay_queue: BinaryHeap<Reverse<(tokio::time::Instant, BleAddr)>> = BinaryHeap::new();
-    // Track queued/probed addresses to deduplicate
-    let mut seen: HashSet<BleAddr> = HashSet::new();
-
-    let max_jitter_ms: u64 = 5000;
+    // Track last probe time per address for cooldown
+    let mut last_probed: HashMap<BleAddr, tokio::time::Instant> = HashMap::new();
+    let cooldown = std::time::Duration::from_secs(cooldown_secs);
 
     loop {
-        // Compute sleep target: next delay queue entry, or far future
-        let next_fire = delay_queue
-            .peek()
-            .map(|Reverse((t, _))| *t)
-            .unwrap_or_else(|| tokio::time::Instant::now() + std::time::Duration::from_secs(3600));
-
-        tokio::select! {
-            // New scan result from adapter
-            result = scanner.next() => {
-                let addr = match result {
-                    Some(a) => a,
-                    None => {
-                        debug!("BLE scanner ended");
-                        break;
-                    }
-                };
-
-                trace!(addr = %addr, "BLE scan result");
-                stats.record_scan_result();
-
-                // Dedup: skip if already queued, probed, or connected
-                if seen.contains(&addr) {
-                    continue;
-                }
-                {
-                    let pool_guard = pool.lock().await;
-                    if pool_guard.contains(&addr.to_transport_addr()) {
-                        continue;
-                    }
-                }
-
-                // Schedule with random jitter
-                let jitter = std::time::Duration::from_millis(
-                    rand::rng().random_range(0..max_jitter_ms),
-                );
-                let fire_at = tokio::time::Instant::now() + jitter;
-                delay_queue.push(Reverse((fire_at, addr.clone())));
-                seen.insert(addr);
+        let addr = match scanner.next().await {
+            Some(a) => a,
+            None => {
+                debug!("BLE scanner ended");
+                break;
             }
+        };
 
-            // Next delayed probe is ready
-            _ = tokio::time::sleep_until(next_fire) => {
-                let Reverse((_, addr)) = match delay_queue.pop() {
-                    Some(entry) => entry,
-                    None => continue,
-                };
+        trace!(addr = %addr, "BLE scan result");
+        stats.record_scan_result();
 
-                // Skip if connected while waiting
-                {
-                    let pool_guard = pool.lock().await;
-                    if pool_guard.contains(&addr.to_transport_addr()) {
-                        continue;
-                    }
-                }
-
-                // Need pubkey for probe
-                let our_pubkey = match local_pubkey {
-                    Some(pk) => pk,
-                    None => {
-                        // No pubkey — just report MAC without identity
-                        buffer.add_peer(&addr);
-                        continue;
-                    }
-                };
-
-                // L2CAP connect
-                let stream = match tokio::time::timeout(
-                    std::time::Duration::from_millis(connect_timeout_ms),
-                    io.connect(&addr, psm),
-                )
-                .await
-                {
-                    Ok(Ok(s)) => s,
-                    Ok(Err(e)) => {
-                        debug!(addr = %addr, error = %e, "BLE probe connect failed");
-                        continue;
-                    }
-                    Err(_) => {
-                        debug!(addr = %addr, "BLE probe connect timeout");
-                        stats.record_connect_timeout();
-                        continue;
-                    }
-                };
-
-                // Pubkey exchange, then close the L2CAP connection
-                match pubkey_exchange(&stream, &our_pubkey).await {
-                    Ok(peer_pubkey) => {
-                        debug!(addr = %addr, "BLE probe complete");
-
-                        // Cross-probe tie-breaker: smaller NodeAddr's outbound wins
-                        if let Some(ref our_addr) = local_node_addr {
-                            let peer_addr = NodeAddr::from_pubkey(&peer_pubkey);
-                            if our_addr >= &peer_addr {
-                                debug!(
-                                    addr = %addr,
-                                    "BLE probe tie-breaker: yielding to peer's outbound"
-                                );
-                            }
-                        }
-
-                        // Report to node layer — auto-connect will establish
-                        // a persistent connection via send_async/connect_inline
-                        buffer.add_peer_with_pubkey(&addr, peer_pubkey);
-                    }
-                    Err(e) => {
-                        debug!(addr = %addr, error = %e, "BLE probe pubkey exchange failed");
-                    }
-                }
-                // L2CAP connection dropped here (stream goes out of scope)
+        // Skip if already connected
+        {
+            let pool_guard = pool.lock().await;
+            if pool_guard.contains(&addr.to_transport_addr()) {
+                continue;
             }
         }
+
+        // Skip if in cooldown
+        if last_probed
+            .get(&addr)
+            .is_some_and(|last| last.elapsed() < cooldown)
+        {
+            continue;
+        }
+
+        // Record probe time (before attempt, so cooldown applies on failure too)
+        last_probed.insert(addr.clone(), tokio::time::Instant::now());
+
+        // Need pubkey for probe
+        let our_pubkey = match local_pubkey {
+            Some(pk) => pk,
+            None => {
+                buffer.add_peer(&addr);
+                continue;
+            }
+        };
+
+        // L2CAP connect
+        let stream = match tokio::time::timeout(
+            std::time::Duration::from_millis(connect_timeout_ms),
+            io.connect(&addr, psm),
+        )
+        .await
+        {
+            Ok(Ok(s)) => s,
+            Ok(Err(e)) => {
+                debug!(addr = %addr, error = %e, "BLE probe connect failed");
+                continue;
+            }
+            Err(_) => {
+                debug!(addr = %addr, "BLE probe connect timeout");
+                stats.record_connect_timeout();
+                continue;
+            }
+        };
+
+        // Pubkey exchange, then close the L2CAP connection
+        match pubkey_exchange(&stream, &our_pubkey).await {
+            Ok(peer_pubkey) => {
+                debug!(addr = %addr, "BLE probe complete");
+
+                // Cross-probe tie-breaker: smaller NodeAddr's outbound wins
+                if let Some(ref our_addr) = local_node_addr {
+                    let peer_addr = NodeAddr::from_pubkey(&peer_pubkey);
+                    if our_addr >= &peer_addr {
+                        debug!(
+                            addr = %addr,
+                            "BLE probe tie-breaker: yielding to peer's outbound"
+                        );
+                    }
+                }
+
+                // Report to node layer — auto-connect will establish
+                // a persistent connection via send_async/connect_inline
+                buffer.add_peer_with_pubkey(&addr, peer_pubkey);
+            }
+            Err(e) => {
+                debug!(addr = %addr, error = %e, "BLE probe pubkey exchange failed");
+            }
+        }
+        // L2CAP connection dropped here (stream goes out of scope)
     }
 }
 

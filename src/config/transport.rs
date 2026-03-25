@@ -514,14 +514,9 @@ const DEFAULT_BLE_MAX_CONNECTIONS: usize = 7;
 /// Default BLE connect timeout in milliseconds.
 const DEFAULT_BLE_CONNECT_TIMEOUT_MS: u64 = 10_000;
 
-/// Default BLE scan interval in seconds.
-const DEFAULT_BLE_SCAN_INTERVAL_SECS: u64 = 10;
-
-/// Default BLE beacon interval in seconds.
-const DEFAULT_BLE_BEACON_INTERVAL_SECS: u64 = 30;
-
-/// Default BLE beacon duration in seconds (how long each burst lasts).
-const DEFAULT_BLE_BEACON_DURATION_SECS: u64 = 1;
+/// Default BLE probe cooldown in seconds. After probing an address
+/// (success or failure), wait this long before probing it again.
+const DEFAULT_BLE_PROBE_COOLDOWN_SECS: u64 = 30;
 
 /// BLE transport instance configuration.
 ///
@@ -566,17 +561,10 @@ pub struct BleConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accept_connections: Option<bool>,
 
-    /// Scan interval in seconds. Default: 10.
+    /// Probe cooldown in seconds. After probing a BLE address, wait
+    /// this long before probing the same address again. Default: 30.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scan_interval_secs: Option<u64>,
-
-    /// Beacon interval in seconds between advertising bursts. Default: 10.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub beacon_interval_secs: Option<u64>,
-
-    /// Beacon duration in seconds per advertising burst. Default: 3.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub beacon_duration_secs: Option<u64>,
+    pub probe_cooldown_secs: Option<u64>,
 }
 
 impl BleConfig {
@@ -626,22 +614,10 @@ impl BleConfig {
         self.accept_connections.unwrap_or(true)
     }
 
-    /// Get the scan interval in seconds. Default: 10.
-    pub fn scan_interval_secs(&self) -> u64 {
-        self.scan_interval_secs
-            .unwrap_or(DEFAULT_BLE_SCAN_INTERVAL_SECS)
-    }
-
-    /// Get the beacon interval in seconds. Default: 10.
-    pub fn beacon_interval_secs(&self) -> u64 {
-        self.beacon_interval_secs
-            .unwrap_or(DEFAULT_BLE_BEACON_INTERVAL_SECS)
-    }
-
-    /// Get the beacon duration in seconds. Default: 3.
-    pub fn beacon_duration_secs(&self) -> u64 {
-        self.beacon_duration_secs
-            .unwrap_or(DEFAULT_BLE_BEACON_DURATION_SECS)
+    /// Get the probe cooldown in seconds. Default: 30.
+    pub fn probe_cooldown_secs(&self) -> u64 {
+        self.probe_cooldown_secs
+            .unwrap_or(DEFAULT_BLE_PROBE_COOLDOWN_SECS)
     }
 }
 

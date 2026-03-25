@@ -21,9 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bluetooth Low Energy (BLE) L2CAP Connection-Oriented Channel transport
   with per-link MTU negotiation, behind the `ble` Cargo feature flag
   (default-on, Linux only, requires BlueZ)
-- BLE peer discovery via scan/probe with per-entry random jitter to
-  prevent herd effects when multiple nodes see the same beacon
-- Periodic BLE beacon advertising with configurable interval and duration
+- BLE peer discovery via continuous scan/probe with cooldown-based
+  deduplication (`probe_cooldown_secs`, default 30s)
+- Continuous BLE advertising for reliable L2CAP connectivity
 - Cross-probe tie-breaker using deterministic NodeAddr comparison
 - Connection pool with configurable capacity and eviction
 
