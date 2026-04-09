@@ -82,6 +82,7 @@ define Build/Compile
 	cargo build \
 		--release \
 		--target $(RUST_TARGET) \
+		--features gateway \
 		--bin fips \
 		--bin fipsctl \
 		--bin fipstop \

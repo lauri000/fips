@@ -18,6 +18,7 @@
 //!     nsec: "nsec1..."
 //! ```
 
+#[cfg(feature = "gateway")]
 mod gateway;
 mod node;
 mod peer;
@@ -34,6 +35,7 @@ pub use node::{
     NodeConfig, RateLimitConfig, RekeyConfig, RetryConfig, SessionConfig, SessionMmpConfig,
     TreeConfig,
 };
+#[cfg(feature = "gateway")]
 pub use gateway::{ConntrackConfig, GatewayConfig, GatewayDnsConfig};
 pub use peer::{ConnectPolicy, PeerAddress, PeerConfig};
 pub use transport::{BleConfig, DirectoryServiceConfig, EthernetConfig, TcpConfig, TorConfig, TransportInstances, TransportsConfig, UdpConfig};
@@ -320,6 +322,7 @@ pub struct Config {
     pub peers: Vec<PeerConfig>,
 
     /// Gateway configuration (`gateway`).
+    #[cfg(feature = "gateway")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gateway: Option<GatewayConfig>,
 }
@@ -441,6 +444,7 @@ impl Config {
             self.peers = other.peers;
         }
         // Merge gateway section — higher-priority config replaces entirely
+        #[cfg(feature = "gateway")]
         if other.gateway.is_some() {
             self.gateway = other.gateway;
         }

@@ -4,6 +4,7 @@
 //! DNS-allocated virtual IPs and kernel nftables NAT.
 
 use clap::Parser;
+#[cfg(target_os = "linux")]
 use fips::gateway::{control, dns, nat, net, pool};
 use fips::version;
 use fips::Config;
